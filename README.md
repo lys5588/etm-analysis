@@ -1,113 +1,117 @@
-# ETM 数据采样与采集运行指南
+# ETM Data Sampling and Collection Guide
 
-本目录是可独立运行的 ETM Morris 采样与 API 数据采集包。所有命令都应在本目录（即包含 `whole_process.py` 的目录）执行，代码依赖相对路径，不要从上级目录启动。
+This directory is a standalone package for ETM Morris sampling and API data collection. Run every command from this directory—the directory containing `whole_process.py`—because the code relies on relative paths. Do not start the scripts from the parent directory.
 
-## 1. 环境准备
+## 1. Environment setup
 
-建议使用 Python 3.9–3.11，然后安装依赖。原始依赖固定了 `pyyaml==6.0`，在 Python 3.12 上可能需要编译并安装失败，因此交接运行环境优先使用 Python 3.9–3.11：
+Python 3.9–3.11 is recommended. The original dependencies pin `pyyaml==6.0`, which may need to be built from source and fail to install on Python 3.12. Install the dependencies with:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-真实请求 ETM 前，将 `config/local.settings.yml.example` 复制为 `config/local.settings.yml`，并填写个人 ETM token。不要把 `local.settings.yml` 发送给其他人或提交到 Git。
+Before making real ETM requests, copy `config/local.settings.yml.example` to `config/local.settings.yml` and enter your personal ETM token. Do not share or commit `local.settings.yml`.
 
-程序默认请求 ETM production API。当前场景地区、年份和基础 scenario ID 写在 `generate_input_addup.py` 中，分别为 `UK_united_kingdom`、`2020` 和 `1362080`。如运行对象不同，需要先由维护人员确认这些值。
+By default, the program uses the ETM production API. The area, end year, and base scenario ID are currently hard-coded in `generate_input_addup.py` as `UK_united_kingdom`, `2020`, and `1362080`. If you are running a different project, ask the maintainer to confirm these values first.
 
-## 2. 初始输入文件
+## 2. Initial input files
 
-### 核心变量设定
+### Main variable definition
 
 `variable_data.csv`
 
-这是整个流程的主要输入，定义需要采样的变量、变量 Min/Max、Euclidean Independent、Equivalent、Simplex/SYNsimplex 分组、固定值和 Synthetic 控制元素。Simplex 分组依赖 CSV 中的行顺序，不要随意排序。
+This is the main input for the complete workflow. It defines the variables to sample, their minimum and maximum values, Euclidean Independent variables, Equivalent variables, Simplex/SYNsimplex groups, fixed values, and Synthetic control elements.
 
-### 父子约束
+Simplex grouping depends on the row order in this CSV. Do not sort or reorder the rows without checking the grouping logic.
+
+### Parent-child constraints
 
 `synthetic_refer.csv`
 
-定义 Synthetic 控制变量与子变量的对应关系，用于后处理时限制子变量不能超过父变量。
+This file defines the relationships between Synthetic control variables and their child variables. During post-processing, a child value is capped so that it does not exceed its parent value.
 
-### ETM 变量映射与查询配置
+### ETM mappings and query configuration
 
-- `query/database_index.csv`：将数字变量编号映射为 ETM API 的 `database_item` 名称。
-- `query/all_var_real.csv`：随包保留的 ETM 变量参考表；当前代码接口保留该路径，但实际映射使用 `database_index.csv`。
-- `data/input/queries.csv`：每个样本要请求的 ETM gquery 指标。
-- `data/input/data_downloads.csv`：每个样本要下载的数据，目前为 `energy_flow` 和 `merit_order`。
-- `data/input/heat_network_orders.csv`：场景工具的可选配置文件。
+- `query/database_index.csv`: maps numeric variable IDs to ETM API `database_item` names.
+- `query/all_var_real.csv`: the ETM variable reference table included with the package. The current function interface retains this path, but the actual mapping is performed with `database_index.csv`.
+- `data/input/queries.csv`: lists the ETM gqueries requested for every sample.
+- `data/input/data_downloads.csv`: defines the downloads requested for every sample. It currently requests `energy_flow` and `merit_order`.
+- `data/input/heat_network_orders.csv`: optional configuration used by the scenario tools.
 
-## 3. 完整运行流程
+## 3. Complete workflow
 
-### 第一步：生成 Morris 采样和组内 ratio
+### Step 1: Generate the Morris design and within-group ratios
 
 ```bash
 python whole_process.py --save_ratio_sampling
 ```
 
-输入：
+Input:
 
 - `variable_data.csv`
 
-输出：
+Outputs:
 
-- `morris_sampling_design_ratios.csv`：0–1 ratio 采样，下一步真正使用。
-- `morris_sampling_design.csv`：经过范围和变量关系转换后的采样结果，主要用于检查。
+- `morris_sampling_design_ratios.csv`: the 0–1 ratio sampling design used by the next step.
+- `morris_sampling_design.csv`: the sampling design after range and variable-relation transformations; mainly used for verification.
 
-当前随包的 `variable_data.csv` 预期得到 226 个采样维度和 1362 个样本。修改变量设定后，维度和样本数可能变化。
+With the included `variable_data.csv`, the expected result is 226 sampling dimensions and 1,362 samples. These numbers may change if the variable definitions are modified.
 
-### 第二步：生成 param_encoding
+Always include `--save_ratio_sampling`. Without it, the downstream ratio file is not regenerated and a stale file may be used.
+
+### Step 2: Generate `param_encoding`
 
 ```bash
 python data_transform.py
 ```
 
-输入：
+Inputs:
 
 - `morris_sampling_design_ratios.csv`
 - `variable_data.csv`
 - `synthetic_refer.csv`
 
-处理内容：将 ratio 转成变量实际值，转置为“行=变量、列=样本”，并执行 Synthetic 父子上限处理。
+This step converts ratios to actual variable values, transposes the design to “rows = variables, columns = samples,” and applies the Synthetic parent-child limits.
 
-输出：
+Outputs:
 
-- `query/param_encoding_real.csv`：下一步使用，不含 Synthetic 控制行。
-- `query/param_encoding_full.csv`：包含控制行，用于核对。
+- `query/param_encoding_real.csv`: used by the next step and excludes the Synthetic control rows.
+- `query/param_encoding_full.csv`: includes the control rows and is intended for verification.
 
-### 第三步：生成 ETM 场景输入
+### Step 3: Generate ETM scenario input files
 
 ```bash
 python generate_input_addup.py
 ```
 
-输入：
+Inputs:
 
 - `query/param_encoding_real.csv`
 - `query/database_index.csv`
 
-输出：
+Outputs:
 
-- `data/input/scenario_list.csv`：样本场景列表。
-- `data/input/scenario_settings.csv`：每个样本对应的 ETM input 设置。
-- `query/min_max_data.csv`：本轮使用的 Min/Max 数据。
-- `query/min_max_errors.csv`：仅在发生截断时生成或更新。
+- `data/input/scenario_list.csv`: the list of sample scenarios.
+- `data/input/scenario_settings.csv`: the ETM input values for every sample.
+- `query/min_max_data.csv`: the minimum and maximum values used for this run.
+- `query/min_max_errors.csv`: generated or updated only when values are clipped.
 
-注意：后续 task 执行会反复覆盖 `data/input/scenario_list.csv` 和 `data/input/scenario_settings.csv`。如果需要保留完整主输入，应在拆分前另行备份这两个文件。
+Later task execution repeatedly overwrites `data/input/scenario_list.csv` and `data/input/scenario_settings.csv`. If you need to retain the complete master input, back up both files before splitting the tasks.
 
-### 第四步：拆分 task
+### Step 4: Split the samples into tasks
 
-首次运行或确认开始全新一轮任务后执行：
+For the first run, or after confirming that you are starting a completely new run, execute:
 
 ```bash
 python scenario_from_csv_opt.py --force-split --batch-size 1
 ```
 
-输入：
+Inputs:
 
 - `data/input/scenario_list.csv`
 - `data/input/scenario_settings.csv`
 
-输出结构：
+Expected structure:
 
 ```text
 data/tasks/1/scenario_list.csv
@@ -115,62 +119,66 @@ data/tasks/1/scenario_settings.csv
 data/tasks/2/...
 ```
 
-`--force-split` 会删除 `data/tasks` 中已有的 task 和 task 结果。只有在已备份旧结果或明确开始新一轮运行时才可使用。
+`--force-split` deletes all existing tasks and task results under `data/tasks`. Use it only after backing up the previous results or when you explicitly intend to start a new run.
 
-### 第五步：顺序请求 ETM
+### Step 5: Run the ETM requests sequentially
 
 ```bash
 python scenario_from_csv_opt.py --run
 ```
 
-查看进度：
+Check progress with:
 
 ```bash
 python scenario_from_csv_opt.py --status
 ```
 
-每个 task 会调用 `scenario_from_csv.py`，更新 ETM 场景、执行 `queries.csv` 中的查询，并下载 `data_downloads.csv` 中定义的数据。
+Each task invokes `scenario_from_csv.py`, updates the ETM scenario, executes the queries in `queries.csv`, and downloads the datasets defined in `data_downloads.csv`.
 
-预期输出：
+Expected outputs:
 
-- `data/tasks/<task编号>/scenario_outcomes.csv`
-- `data/output/sample_<样本编号>/sample_<样本编号>_energy_flow.csv`
-- `data/output/sample_<样本编号>/sample_<样本编号>_merit_order.csv`
+- `data/tasks/<task_number>/scenario_outcomes.csv`
+- `data/output/sample_<sample_number>/sample_<sample_number>_energy_flow.csv`
+- `data/output/sample_<sample_number>/sample_<sample_number>_merit_order.csv`
 
-任务按顺序修改同一个基础 ETM scenario，不要同时启动多个 `--run` 进程。失败任务会每 5 秒持续重试；如果持续失败，应手动停止并检查 token、网络和变量设置。
+The tasks sequentially modify the same base ETM scenario. Do not start multiple `--run` processes at the same time.
 
-### 第六步：合并查询结果
+Failed tasks retry every five seconds without a retry limit. If a task continues to fail, stop the process manually and check the token, network connection, ETM access, and variable settings.
+
+### Step 6: Merge the query results
 
 ```bash
 python merge_sample_outcomes.py
 ```
 
-输入：
+Input:
 
 - `data/tasks/*/scenario_outcomes.csv`
 
-最终输出：
+Final output:
 
 - `data/output/sample_outcomes_merged.csv`
 
-该文件是主要交付结果，格式为“行=ETM 查询指标、列=sample、最后一列=unit”。不要使用 `scenario_from_csv_opt.py --merge` 生成的纵向追加文件作为最终分析数据。
+This is the main deliverable. Its layout is “rows = ETM query metrics, columns = samples, final column = unit.”
 
-## 4. 最终交付文件
+Do not use the vertically appended file created by `scenario_from_csv_opt.py --merge` as the final analysis dataset.
 
-完整运行后，至少交付以下文件：
+## 4. Final deliverables
 
-1. `data/output/sample_outcomes_merged.csv`：最终 ETM 指标矩阵。
-2. `variable_data.csv`：本轮变量设定和范围。
-3. `query/param_encoding_real.csv`：本轮实际发送前的样本参数矩阵。
+After a complete run, deliver at least the following files:
 
-如果需要能量流和 merit order 明细，还应同时交付：
+1. `data/output/sample_outcomes_merged.csv`: the final ETM metric matrix.
+2. `variable_data.csv`: the variable definitions and ranges used for the run.
+3. `query/param_encoding_real.csv`: the final sample parameter matrix before the ETM inputs are generated.
+
+If the energy-flow and merit-order details are required, also deliver:
 
 - `data/output/sample_*/sample_*_energy_flow.csv`
 - `data/output/sample_*/sample_*_merit_order.csv`
 
-建议将本轮需要交付的三个核心文件复制到 `report/`，再统一打包；`data/output` 明细文件体积可能很大，应单独归档。
+It is recommended to copy the three core deliverables into `report/` before packaging the run. The detailed files under `data/output` may be very large and should normally be archived separately.
 
-## 5. 推荐命令汇总
+## 5. Command summary
 
 ```bash
 python -m pip install -r requirements.txt
@@ -183,4 +191,4 @@ python scenario_from_csv_opt.py --status
 python merge_sample_outcomes.py
 ```
 
-不要直接无参数运行 `scenario_from_csv_opt.py`；无参数会默认执行拆分、请求和内置纵向合并，不适合作为交接后的标准运行方式。
+Do not run `scenario_from_csv_opt.py` without arguments. With no arguments, it defaults to splitting, running, and using its built-in vertical merger, which is not the standard handover workflow.
