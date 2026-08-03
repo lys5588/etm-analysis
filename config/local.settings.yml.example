@@ -1,0 +1,3 @@
+# Copy this file to local.settings.yml and fill in your own ETM token.
+# local.settings.yml must not be shared or committed.
+personal_etm_token: "replace_with_your_personal_etm_token"

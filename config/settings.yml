@@ -1,0 +1,18 @@
+# Shared project settings. Keep credentials out of this file.
+personal_etm_token:
+
+input_file_folder: data/input
+input_curves_folder: data/input/curves
+input_orders_folder: data/input/orders
+
+output_file_folder: data/output
+output_curves_folder: data/output/curves
+output_orders_folder: data/output/orders
+
+local_engine_url: http://localhost:3000/api/v3
+local_model_url: http://localhost:3001
+
+proxy_servers:
+
+csv_separator: ','
+decimal_seperator: '.'

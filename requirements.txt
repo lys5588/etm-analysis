@@ -1,0 +1,5 @@
+pandas
+numpy
+requests==2.22.0
+pyyaml==6.0
+SALib
